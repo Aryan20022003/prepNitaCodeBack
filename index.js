@@ -1,13 +1,18 @@
 const express = require("express");
-const dotenv=require('dotenv');
+const dotenv = require('dotenv');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require("socket.io");
+
 dotenv.config();
 const app = express();
-const http=require('http');
-const { Server } = require("socket.io");
+app.use(cors());
+
 const server = http.createServer(app);
 const io = new Server(server);
+
 const userSocketMap = {};
-const PORT=process.env.PORT || 6000;
+const PORT = process.env.PORT || 8000;
 
 const getAllConnectedClients = (roomId) => {
   return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(
@@ -21,61 +26,51 @@ const getAllConnectedClients = (roomId) => {
 };
 
 io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
 
-  console.log('socket id generation',socket.id);
-
-  socket.on("join-room", ({ roomId, userName ,peerID}) => {
-
+  socket.on("join-room", ({ roomId, userName }) => {
     userSocketMap[socket.id] = userName;
-
     socket.join(roomId);
-
-    console.log('join-room',userName);
-
-    const updatedClients = getAllConnectedClients(roomId);
-
-    updatedClients.forEach(({ socketId }) => {
+    
+    const clients = getAllConnectedClients(roomId);
+    clients.forEach(({ socketId }) => {
       io.to(socketId).emit("user-connected", {
-        clients: updatedClients,
+        clients,
         userName,
-        socketId:socket.id,
-        peerID
-  
+        socketId: socket.id,
       });
     });
 
-    socket.to(roomId).emit('user-connected',({peerID,clients:updatedClients,socketId:socket.id,userName}))
-
     socket.on("disconnecting", () => {
       const rooms = [...socket.rooms];
-
       rooms.forEach((roomId) => {
         socket.in(roomId).emit("user-disconnected", {
           socketId: socket.id,
           userName: userSocketMap[socket.id],
-          peerID
         });
       });
-
       delete userSocketMap[socket.id];
-
       socket.leave();
     });
   });
 
-  socket.on('change',({roomId,code})=>{
-    socket.in(roomId).emit('change',{code});
+  socket.on('change', ({ roomId, code }) => {
+    socket.to(roomId).emit('change', { code });
+  });
 
-  })
-  socket.on("codesync", ({code,socketId}) => {
+  socket.on("codesync", ({ code, socketId }) => {
     io.to(socketId).emit("change", { code });
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("Hello World");
+  res.json({ status: "Server is running" });
+});
+
+app.post("/compile", (req, res) => {
+  res.status(200).json({ data: "Compilation endpoint" });
 });
 
 server.listen(PORT, () => {
-  console.log(`listen on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
